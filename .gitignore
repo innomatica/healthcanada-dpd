@@ -1,0 +1,7 @@
+allfiles/
+allfiles_ap/
+allfiles_dr/
+allfiles_ia/
+*.json
+*.sql3
+*.zip
