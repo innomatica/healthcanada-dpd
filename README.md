@@ -18,8 +18,8 @@ and all_files_it.zip) from [this link.](https://www.canada.ca/en/health-canada/s
 ```
 python3 convert_data.py
 ```
-4. First choose the menu (r) to read raw data, then (b) to build drug data.
-You may have to up to 30 minutes or more to build data. After that it will
+4. First choose (r) to read raw data, then (b) to build drug data.
+It may take up to 30 minutes or more to build data. After that it will
 create a json file, `build_yyyymmdd.json`, which will be used to create
 database files in the subsequent operations.
 
