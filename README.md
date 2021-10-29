@@ -28,7 +28,8 @@ database files in the subsequent operations.
 * build_yyyymmdd.json: JSON data that combines all extract files.
 * otc_yyyymmdd.sql3: sqlite3 database for Human OTC drugs.
 * otc_yyyymmdd.zip: zipped sqlite3 database
-* otc_yyyymmdd.json: reconstructed JSON data with drug id as key
+* otc_yyyymmdd.json: filtered JSON data
+* otc_indexed_yyyymmdd.json: reconstructed JSON data with drug id as key
 
 ## Create Firebase Realtime Database
 

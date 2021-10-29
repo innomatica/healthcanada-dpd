@@ -21,13 +21,13 @@ extract_dir = './allfiles'
 prod_status = {'ACTIVE':'', 'APPROVED':'ap', 'INACTIVE':'ia', 'DORMANT':'dr'}
 #prod_status = {'APPROVED':'ia', 'DORMANT':'dr'}
 data_dict = {
-    "active_ingredient": {
+    "active_ingredients": {
         "input": 'ingred',
         "output": [],
-        "fields": ["drug_code","active_ingredient_code","ingredient",
+        "fields": ["drug_code","active_ingredient_code","ingredients",
             "ingredient_supplied_int","strength","strength_unit",
             "strength_type","dosage_value","base","dosage_unit","notes",
-            "ingredient_f","strength_unit_f","strength_type_f",
+            "ingredients_f","strength_unit_f","strength_type_f",
             "dosage_unit_f"]
     },
     "company": {
@@ -143,7 +143,6 @@ def read_extracts():
     return True
 
 
-
 def build_data():
     if data_dict['drug_product']['output'] == []:
         input('\tERROR: No data found...read raw data first')
@@ -156,18 +155,18 @@ def build_data():
         if drug_l[idx]['brand_name_f'] == '':
             drug_l[idx]['brand_name_f'] = drug_l[idx]['brand_name']
 
-        # active ingredient
-        ingred_l = data_dict['active_ingredient']['output']
-        drug_l[idx]['ingredient'] = []
-        drug_l[idx]['ingredient_f'] = []
+        # active ingredients
+        ingred_l = data_dict['active_ingredients']['output']
+        drug_l[idx]['ingredients'] = []
+        drug_l[idx]['ingredients_f'] = []
         for idy in range(len(ingred_l)):
             if drug_l[idx]['drug_code'] == ingred_l[idy]['drug_code']:
-                drug_l[idx]['ingredient'].append(
-                    ingred_l[idy]['ingredient'] + ' ' +
+                drug_l[idx]['ingredients'].append(
+                    ingred_l[idy]['ingredients'] + ' ' +
                     ingred_l[idy]['strength'] +
                     ingred_l[idy]['strength_unit'])
-                drug_l[idx]['ingredient_f'].append(
-                    ingred_l[idy]['ingredient_f'] + ' ' +
+                drug_l[idx]['ingredients_f'].append(
+                    ingred_l[idy]['ingredients_f'] + ' ' +
                     ingred_l[idy]['strength'] +
                     ingred_l[idy]['strength_unit_f'])
         '''
@@ -331,8 +330,8 @@ def load_json(version):
 	class_f: Humain
 	brand_name_f: MAR-PALIPERIDONE
 	descriptor_f:
-	ingredient: ['PALIPERIDONE 6MG']
-	ingredient_f: ['Palipéridone 6MG']
+	ingredients: ['PALIPERIDONE 6MG']
+	ingredients_f: ['Palipéridone 6MG']
 	company_name: ['MARCAN PHARMACEUTICALS INC']
 	dosage_form: ['TABLET (EXTENDED-RELEASE)']
 	dosage_form_f: ['Comprimé (à libération prolongée)']
@@ -352,13 +351,16 @@ def create_database(dlist, version, option=None):
     elif option == 'PRS':
         zipname = 'prs_' + version
     elif option == 'OTC+PRS':
-        zipname = 'otcprs_' + version
-    else:
         zipname = 'drugs_' + version
+    else:
+        zipname = 'all_' + version
 
     dbname = zipname + '.sql3'
-    jsonname = zipname + '.json'
-    jdict = {}
+    fbname = zipname + '.json'
+    fbdict = {}
+    # custom output
+    outname = 'drugs.json'
+    outlist = []
 
     # delete existing sqlite3 files if any
     if os.path.isfile(dbname):
@@ -376,15 +378,34 @@ def create_database(dlist, version, option=None):
             "ph_std TEXT, packaging TEXT, category TEXT,"
             "class TEXT, class_f TEXT,"
             "brand_name TEXT, brand_name_f TEXT,"
-            "ingredient TEXT, ingredient_f TEXT,"
+            "ingredients TEXT, ingredients_f TEXT,"
             "dosage_form TEXT, dosage_form_f TEXT,"
             "admin_route TEXT, admin_route_f TEXT,"
             "schedule TEXT, schedule_f TEXT,"
             "descriptor TEXT, descriptor_f TEXT)")
+
+    drug_id = -1
+    ingredients = ''
+
     # insert data
     for idx in range(len(dlist)):
+        # remove seemingly duplicated entries on the assumption that
+        # those are listed next to each other, which might not be
+        # the case
+        if drug_id == dlist[idx]['drug_identification_number']:
+            continue
+        else:
+            drug_id = dlist[idx]['drug_identification_number']
+
         if option == 'OTC':
             if ('Human' not in dlist[idx]['class']  or
+                    'CAT IV' in dlist[idx]['product_categorization'] or
+                    'TEA (HERBAL)' in dlist[idx]['dosage_form'] or
+                    'SHAMPOO' in dlist[idx]['dosage_form'] or
+                    'SOAP' in dlist[idx]['dosage_form'] or
+                    'STICK' in dlist[idx]['dosage_form'] or
+                    'TOOTHPASTE' in dlist[idx]['dosage_form'] or
+                    'WIPE' in dlist[idx]['dosage_form'] or
                     'OTC' not in dlist[idx]['schedule']):
                 continue
         elif option == 'PRS':
@@ -393,6 +414,13 @@ def create_database(dlist, version, option=None):
                 continue
         elif option == 'OTC+PRS':
             if (('Human' not in dlist[idx]['class'] or
+                    'CAT IV' in dlist[idx]['product_categorization'] or
+                    'TEA (HERBAL)' in dlist[idx]['dosage_form'] or
+                    'SHAMPOO' in dlist[idx]['dosage_form'] or
+                    'SOAP' in dlist[idx]['dosage_form'] or
+                    'STICK' in dlist[idx]['dosage_form'] or
+                    'TOOTHPASTE' in dlist[idx]['dosage_form'] or
+                    'WIPE' in dlist[idx]['dosage_form'] or
                     'OTC' not in dlist[idx]['schedule']) and
                     ('Human' not in dlist[idx]['class'] or
                     'Prescription' not in dlist[idx]['schedule'])):
@@ -411,8 +439,8 @@ def create_database(dlist, version, option=None):
             dlist[idx]['class_f'].replace("'",r"''"),
             dlist[idx]['brand_name'].replace("'",r"''"),
             dlist[idx]['brand_name_f'].replace("'",r"''"),
-            ','.join(dlist[idx]['ingredient']).replace("'",r"''"),
-            ','.join(dlist[idx]['ingredient_f']).replace("'",r"''"),
+            ','.join(dlist[idx]['ingredients']).replace("'",r"''"),
+            ','.join(dlist[idx]['ingredients_f']).replace("'",r"''"),
             ','.join(dlist[idx]['dosage_form']).replace("'",r"''"),
             ','.join(dlist[idx]['dosage_form_f']).replace("'",r"''"),
             ','.join(dlist[idx]['admin_route']).replace("'",r"''"),
@@ -422,8 +450,27 @@ def create_database(dlist, version, option=None):
             dlist[idx]['descriptor'].replace("'",r"''"),
             dlist[idx]['descriptor'].replace("'",r"''")))
 
-        # add the item to json list with id as a key
-        jdict[dlist[idx]['drug_identification_number']] = dlist[idx]
+        # add the item to firebase dict with id as a key
+        fbdict[dlist[idx]['drug_identification_number']] = dlist[idx]
+
+        # build custom output
+        if idx % 10 == 9 and 'ORAL' in dlist[idx]['admin_route']:
+            outlist.append({
+                'drug_id': dlist[idx]['drug_identification_number'],
+                'brand_name': dlist[idx]['brand_name'],
+                'ingredients': ','.join(dlist[idx]['ingredients'])
+                    .replace("'",r"''"),
+                'form': ','.join(dlist[idx]['dosage_form'])
+                    .replace("'",r"''"),
+                'route': ','.join(dlist[idx]['admin_route'])
+                    .replace("'",r"''"),
+                'manufacturer': ','.join(dlist[idx]['company_name'])
+                    .replace("'",r"''"),
+                'descriptor': ','.join(dlist[idx]['descriptor'])
+                    .replace("'",r"''")
+                })
+        # sort by the name (warning: this takes time)
+        outlist.sort(key=lambda drug:drug['brand_name'])
 
     con.commit()
     con.close()
@@ -431,8 +478,11 @@ def create_database(dlist, version, option=None):
     # create archive from the sql3 file
     shutil.make_archive(zipname, 'zip', '.', dbname)
 
-    with open(jsonname, 'w') as f:
-        json.dump(jdict, f)
+    with open(fbname, 'w') as f:
+        json.dump(fbdict, f)
+
+    with open(outname, 'w') as f:
+        json.dump(outlist, f)
 
 
 def pprint(data_list, start, end, filter=None):
@@ -504,8 +554,8 @@ if __name__ =='__main__':
                     create_database(drugs, version, 'PRS')
                 elif select == '3':
                     create_database(drugs, version, 'OTC+PRS')
-                else:
-                    create_database(drugs, version,)
+                elif select == '4':
+                    create_database(drugs, version, 'ALL')
                 input('database created')
             else:
                 input('Press ENTER to continue')
