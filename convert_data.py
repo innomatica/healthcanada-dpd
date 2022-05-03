@@ -17,10 +17,23 @@ import sqlite3
 from datetime import datetime
 
 json_prefix = 'build_'
+
+build_prefix = 'build'
 extract_dir = './allfiles'
-# choose product status from below
-# prod_status = {'MARKETED':'', 'APPROVED':'ap', 'INACTIVE':'ia', 'DORMANT':'dr'}
-data_dict = {
+source_files = ['biosimilar.txt','comp.txt','drug.txt','form.txt','ingred.txt',
+        'package.txt','pharm.txt','route.txt','schedule.txt','status.txt',
+        'ther.txt','vet.txt' ]
+
+dpd_dataset = []
+build_dataset = []
+
+drug_prod_status = ['MARKETED']
+drug_schedule = 'OTC'
+
+suffixes = {'MARKETED':'', 'APPROVED':'ap', 'INACTIVE':'ia', 'DORMANT':'dr'}
+
+# TODO: rename this variable
+worksheet = {
     "active_ingredients": {
         "input": 'ingred',
         "output": [],
@@ -96,65 +109,51 @@ data_dict = {
     }
 }
 
+def load_dpd_extracts(prod_status):
+    #--------------------------------------------------------------------------
+    # load dpd extracts
+    suffix = suffixes[prod_status]
 
-def read_extracts(prod_status):
+    for key in worksheet:
 
-    for status in prod_status:
-        print('...reading {} status dataset'.format(status))
-        for key in data_dict:
-            if status == 'MARKETED':
-                fname = '{}/{}.txt'.format(extract_dir,data_dict[key]['input'])
-            else:
-                if status == 'APPROVED':
-                    suffix = 'ap'
-                elif status == 'INACTIVE':
-                    suffix = 'ia'
-                elif status == 'DORMANT':
-                    suffix = 'dr'
-                else:
-                    print('unknown product status:', status)
-                    return
+        if suffix == '':
+            fname = '{}/{}.txt'.format(extract_dir, worksheet[key]['input'])
+        else:
+            # append suffix
+            fname = '{}_{}/{}_{}.txt'.format(extract_dir,
+                    suffix, worksheet[key]['input'], suffix)
 
-                fname = '{}_{}/{}_{}.txt'.format(
-                        extract_dir,suffix,data_dict[key]['input'],suffix)
+        if not os.path.isfile(fname):
+            print('\tERROR: file not found {}'.format(fname))
+            return False
 
-            if not os.path.isfile(fname):
-                print('\tERROR: file not found {}'.format(fname))
-                return False
-            else:
-                #print('  ...reading {}'.format(fname))
-                pass
+        with open(fname) as csvfile:
+            csv_data = csv.DictReader(csvfile, worksheet[key]['fields'])
+            output = []
+            for row in csv_data:
+                # DPD data fields are not consistent
+                row['upc'] = ''
+                row['packaging'] = ''
+                row['packaging_f'] = ''
+                row['pharmaceutical_std'] = ''
+                output.append(row)
 
-            with open(fname) as f:
-                csv_reader = csv.reader(f, delimiter=',')
-                output = []
-                lines = 0
-                for row in csv_reader:
-                    item = {}
-                    for idx in range(len(data_dict[key]['fields'])):
-                        item[data_dict[key]['fields'][idx]] = row[idx]
-                    lines = lines + 1
-                    # failsafe placeholders
-                    item['upc'] = ''
-                    item['packaging'] = ''
-                    item['packaging_f'] = ''
-                    item['pharmaceutical_std'] = ''
-                    output.append(item)
-
-                data_dict[key]['output'] = data_dict[key]['output'] + output
+            worksheet[key]['output'] = output
 
     print('...total {} drug data loaded'.format(
-        len(data_dict['drug_product']['output'])))
+        len(worksheet['drug_product']['output'])))
     return True
 
 
-def build_data():
-    if data_dict['drug_product']['output'] == []:
+def build_worksheet(prod_status):
+    #--------------------------------------------------------------------------
+    # build worksheet
+    if worksheet['drug_product']['output'] == []:
         input('\tERROR: No data found...read raw data first')
         return False
 
-    # take drug_product dict as base
-    drug_l = data_dict['drug_product']['output']
+    # take drug_product dict as base set
+    drug_l = worksheet['drug_product']['output']
 
     for idx in range(len(drug_l)):
         print("... {}/{}".format(idx,len(drug_l)), end="\r", flush=True)
@@ -163,7 +162,7 @@ def build_data():
             drug_l[idx]['brand_name_f'] = drug_l[idx]['brand_name']
 
         # active ingredients
-        ingred_l = data_dict['active_ingredients']['output']
+        ingred_l = worksheet['active_ingredients']['output']
         drug_l[idx]['ingredients'] = []
         drug_l[idx]['ingredients_f'] = []
         for idy in range(len(ingred_l)):
@@ -178,14 +177,14 @@ def build_data():
                     ingred_l[idy]['strength_unit_f'])
 
         # company name and code
-        company_l = data_dict['companies']['output']
+        company_l = worksheet['companies']['output']
         for idy in range(len(company_l)):
             if drug_l[idx]['drug_code'] == company_l[idy]['drug_code']:
                 drug_l[idx]['company_name'] = company_l[idy]['company_name']
                 drug_l[idx]['company_code'] = company_l[idy]['company_code']
 
         # dosage form
-        dosage_l = data_dict['dosage_form']['output']
+        dosage_l = worksheet['dosage_form']['output']
         drug_l[idx]['dosage_form'] = []
         drug_l[idx]['dosage_form_f'] = []
         for idy in range(len(dosage_l)):
@@ -197,7 +196,7 @@ def build_data():
 
         '''
         # packaging (no meaningful entries at the moment)
-        packaging_l = data_dict['packaging']['output']
+        packaging_l = worksheet['packaging']['output']
         for idy in range(len(packaging_l)):
             if drug_l[idx]['drug_code'] == packaging_l[idy]['drug_code']:
                 drug_l[idx]['upc'] = packaging_l[idy]['upc']
@@ -210,8 +209,9 @@ def build_data():
                         packaging_l[idy]['package_size'] +
                         packaging_l[idy]['package_size_unit_f'])
         '''
+
         # packaging (replace with product_information)
-        packaging_l = data_dict['packaging']['output']
+        packaging_l = worksheet['packaging']['output']
         for idy in range(len(packaging_l)):
             if drug_l[idx]['drug_code'] == packaging_l[idy]['drug_code']:
                 drug_l[idx]['upc'] = packaging_l[idy]['upc']
@@ -219,13 +219,13 @@ def build_data():
                 drug_l[idx]['packaging_f'] = packaging_l[idy]['product_information']
 
         # phamaceutical standard
-        pharm_l = data_dict['pharmaceutical_standard']['output']
+        pharm_l = worksheet['pharmaceutical_standard']['output']
         for idy in range(len(pharm_l)):
             if drug_l[idx]['drug_code'] == pharm_l[idy]['drug_code']:
                 drug_l[idx]['pharmaceutical_std'] = pharm_l[idy]['pharmaceutical_std']
 
         # route of administration
-        route_l = data_dict['route_of_administration']['output']
+        route_l = worksheet['route_of_administration']['output']
         drug_l[idx]['admin_route'] = []
         drug_l[idx]['admin_route_f'] = []
         for idy in range(len(route_l)):
@@ -236,7 +236,7 @@ def build_data():
                         route_l[idy]['route_of_administration_f'])
 
         # schedule
-        schedule_l = data_dict['schedule']['output']
+        schedule_l = worksheet['schedule']['output']
         drug_l[idx]['schedule'] = []
         drug_l[idx]['schedule_f'] = []
         for idy in range(len(schedule_l)):
@@ -247,7 +247,7 @@ def build_data():
                         schedule_l[idy]['schedule_f'])
 
         # product status
-        status_l = data_dict['product_status']['output']
+        status_l = worksheet['product_status']['output']
         for idy in range(len(status_l)):
             if drug_l[idx]['drug_code'] == status_l[idy]['drug_code']:
                 # only care current status
@@ -256,7 +256,7 @@ def build_data():
                     drug_l[idx]['status_f'] = status_l[idy]['status_f']
 
         # therapeutic class (can be skipped)
-        ther_l = data_dict['therapeutic_class']['output']
+        ther_l = worksheet['therapeutic_class']['output']
         for idy in range(len(ther_l)):
             if drug_l[idx]['drug_code'] == ther_l[idy]['drug_code']:
                 drug_l[idx]['tc_atc'] = ther_l[idy]['tc_atc']
@@ -265,7 +265,7 @@ def build_data():
                 drug_l[idx]['tc_ahfs_f'] = ther_l[idy]['tc_ahfs_f']
 
         # veterinary species
-        species_l = data_dict['veterinary_species']['output']
+        species_l = worksheet['veterinary_species']['output']
         drug_l[idx]['vet_species'] = []
         drug_l[idx]['vet_species_f'] = []
         for idy in range(len(species_l)):
@@ -276,21 +276,14 @@ def build_data():
                 drug_l[idx]['vet_species_f'].append(
                         species_l[idy]['vet_species_f'])
 
-    return True
+    #--------------------------------------------------------------------------
+    # save worksheet in json format
+    fname = build_prefix + '_' + prod_status + '.json'
+    json.dump(worksheet['drug_product']['output'], open(fname, 'w'))
 
 
-def save_json(version, filter=None):
-    fname = json_prefix + version + '.json'
-    try:
-        json.dump(data_dict['drug_product']['output'], open(fname, 'w'))
-    except:
-        return False
-    else:
-        return True
-
-
-def load_json(version):
-    fname = json_prefix + version + '.json'
+def load_build_data(prod_status):
+    fname = build_prefix + '_' + prod_status + '.json'
     try:
         drugs = json.load(open(fname))
     except:
@@ -298,6 +291,7 @@ def load_json(version):
         return None
     else:
         return drugs
+
 
 '''
 	drug_code: 100027
@@ -329,23 +323,22 @@ def load_json(version):
 	vet_species: []
 	vet_species_f: []
 '''
-def create_database(dlist, version, option=None):
+def create_sqlite_database(drug_data, prod_status, option=None):
 
     if option == 'OTC':
-        zipname = 'otc_' + version
+        outfilename = 'otc_' + prod_status
     elif option == 'PRS':
-        zipname = 'prs_' + version
+        outfilename = 'prs_' + prod_status
     elif option == 'OTC+PRS':
-        zipname = 'drugs_' + version
+        outfilename = 'drugs_' + prod_status
     else:
-        zipname = 'all_' + version
+        outfilename = 'all_' + prod_status
 
-    dbname = zipname + '.sql3'
-    fbname = zipname + '.json'
+    # sqlite3 format
+    dbname = outfilename + '.sql3'
+    # json format to be used with firebase storage
+    fbname = outfilename + '.json'
     fbdict = {}
-    # custom output
-    outname = 'drugs.json'
-    outlist = []
 
     # delete existing sqlite3 files if any
     if os.path.isfile(dbname):
@@ -371,43 +364,43 @@ def create_database(dlist, version, option=None):
     ingredients = ''
 
     # insert data
-    for idx in range(len(dlist)):
-        print("...processing {}/{}".format(idx,len(dlist)), end="\r", flush=True)
-        # remove seemingly duplicated entries on the assumption that
-        # those are listed next to each other, which might not be
-        # the case
-        if drug_id == dlist[idx]['drug_identification_number']:
+    for idx in range(len(drug_data)):
+        print("...processing {}/{}".format(idx,len(drug_data)), end="\r", flush=True)
+        # DPD extract has potentially duplicated entries with the same drug id
+        # We remove those here on the assumption that those are listed next to
+        # each other. However this assumption may not be true.
+        if drug_id == drug_data[idx]['drug_identification_number']:
             continue
         else:
-            drug_id = dlist[idx]['drug_identification_number']
+            drug_id = drug_data[idx]['drug_identification_number']
 
         if option == 'OTC':
-            if ('Human' not in dlist[idx]['class']  or
-                    'CAT IV' in dlist[idx]['product_categorization'] or
-                    'TEA (HERBAL)' in dlist[idx]['dosage_form'] or
-                    'SHAMPOO' in dlist[idx]['dosage_form'] or
-                    'SOAP' in dlist[idx]['dosage_form'] or
-                    'STICK' in dlist[idx]['dosage_form'] or
-                    'TOOTHPASTE' in dlist[idx]['dosage_form'] or
-                    'WIPE' in dlist[idx]['dosage_form'] or
-                    'OTC' not in dlist[idx]['schedule']):
+            if ('Human' not in drug_data[idx]['class']  or
+                    'CAT IV' in drug_data[idx]['product_categorization'] or
+                    'TEA (HERBAL)' in drug_data[idx]['dosage_form'] or
+                    'SHAMPOO' in drug_data[idx]['dosage_form'] or
+                    'SOAP' in drug_data[idx]['dosage_form'] or
+                    'STICK' in drug_data[idx]['dosage_form'] or
+                    'TOOTHPASTE' in drug_data[idx]['dosage_form'] or
+                    'WIPE' in drug_data[idx]['dosage_form'] or
+                    'OTC' not in drug_data[idx]['schedule']):
                 continue
         elif option == 'PRS':
-            if ('Human' not in dlist[idx]['class']  or
-                    'Prescription' not in dlist[idx]['schedule']):
+            if ('Human' not in drug_data[idx]['class']  or
+                    'Prescription' not in drug_data[idx]['schedule']):
                 continue
         elif option == 'OTC+PRS':
-            if (('Human' not in dlist[idx]['class'] or
-                    'CAT IV' in dlist[idx]['product_categorization'] or
-                    'TEA (HERBAL)' in dlist[idx]['dosage_form'] or
-                    'SHAMPOO' in dlist[idx]['dosage_form'] or
-                    'SOAP' in dlist[idx]['dosage_form'] or
-                    'STICK' in dlist[idx]['dosage_form'] or
-                    'TOOTHPASTE' in dlist[idx]['dosage_form'] or
-                    'WIPE' in dlist[idx]['dosage_form'] or
-                    'OTC' not in dlist[idx]['schedule']) and
-                    ('Human' not in dlist[idx]['class'] or
-                    'Prescription' not in dlist[idx]['schedule'])):
+            if (('Human' not in drug_data[idx]['class'] or
+                    'CAT IV' in drug_data[idx]['product_categorization'] or
+                    'TEA (HERBAL)' in drug_data[idx]['dosage_form'] or
+                    'SHAMPOO' in drug_data[idx]['dosage_form'] or
+                    'SOAP' in drug_data[idx]['dosage_form'] or
+                    'STICK' in drug_data[idx]['dosage_form'] or
+                    'TOOTHPASTE' in drug_data[idx]['dosage_form'] or
+                    'WIPE' in drug_data[idx]['dosage_form'] or
+                    'OTC' not in drug_data[idx]['schedule']) and
+                    ('Human' not in drug_data[idx]['class'] or
+                    'Prescription' not in drug_data[idx]['schedule'])):
                 continue
 
         cursor.execute("INSERT INTO drugs VALUES ("
@@ -417,71 +410,53 @@ def create_database(dlist, version, option=None):
             "'{}','{}','{}','{}',"
             "'{}','{}','{}','{}',"
             "'{}','{}','{}','{}','{}')".format(
-            dlist[idx]['drug_identification_number'],
-            dlist[idx]['drug_code'],
-            dlist[idx]['status'],
-            dlist[idx]['status_f'].replace("'",r"''"),
+            drug_data[idx]['drug_identification_number'],
+            drug_data[idx]['drug_code'],
+            drug_data[idx]['status'],
+            drug_data[idx]['status_f'].replace("'",r"''"),
             #
-            dlist[idx]['company_name'].replace("'",r"''"),
-            dlist[idx]['company_code'],
-            dlist[idx]['pharmaceutical_std'],
-            dlist[idx]['packaging'].replace("'",r"''"),
+            drug_data[idx]['company_name'].replace("'",r"''"),
+            drug_data[idx]['company_code'],
+            drug_data[idx]['pharmaceutical_std'],
+            drug_data[idx]['packaging'].replace("'",r"''"),
             #
-            dlist[idx]['packaging_f'].replace("'",r"''"),
-            dlist[idx]['upc'],
-            dlist[idx]['product_categorization'].replace("'",r"''"),
-            dlist[idx]['class'].replace("'",r"''"),
+            drug_data[idx]['packaging_f'].replace("'",r"''"),
+            drug_data[idx]['upc'],
+            drug_data[idx]['product_categorization'].replace("'",r"''"),
+            drug_data[idx]['class'].replace("'",r"''"),
             #
-            dlist[idx]['class_f'].replace("'",r"''"),
-            dlist[idx]['brand_name'].replace("'",r"''"),
-            dlist[idx]['brand_name_f'].replace("'",r"''"),
-            ','.join(dlist[idx]['ingredients']).replace("'",r"''"),
+            drug_data[idx]['class_f'].replace("'",r"''"),
+            drug_data[idx]['brand_name'].replace("'",r"''"),
+            drug_data[idx]['brand_name_f'].replace("'",r"''"),
+            ','.join(drug_data[idx]['ingredients']).replace("'",r"''"),
             #
-            ','.join(dlist[idx]['ingredients_f']).replace("'",r"''"),
-            ','.join(dlist[idx]['dosage_form']).replace("'",r"''"),
-            ','.join(dlist[idx]['dosage_form_f']).replace("'",r"''"),
-            ','.join(dlist[idx]['admin_route']).replace("'",r"''"),
+            ','.join(drug_data[idx]['ingredients_f']).replace("'",r"''"),
+            ','.join(drug_data[idx]['dosage_form']).replace("'",r"''"),
+            ','.join(drug_data[idx]['dosage_form_f']).replace("'",r"''"),
+            ','.join(drug_data[idx]['admin_route']).replace("'",r"''"),
             #
-            ','.join(dlist[idx]['admin_route_f']).replace("'",r"''"),
-            ','.join(dlist[idx]['schedule']).replace("'",r"''"),
-            ','.join(dlist[idx]['schedule_f']).replace("'",r"''"),
-            dlist[idx]['descriptor'].replace("'",r"''"),
+            ','.join(drug_data[idx]['admin_route_f']).replace("'",r"''"),
+            ','.join(drug_data[idx]['schedule']).replace("'",r"''"),
+            ','.join(drug_data[idx]['schedule_f']).replace("'",r"''"),
+            drug_data[idx]['descriptor'].replace("'",r"''"),
             #
-            dlist[idx]['descriptor_f'].replace("'",r"''")))
+            drug_data[idx]['descriptor_f'].replace("'",r"''")))
 
         # add the item to firebase dict with id as a key
-        fbdict[dlist[idx]['drug_identification_number']] = dlist[idx]
-
-        # build custom output
-        if idx % 10 == 9 and 'ORAL' in dlist[idx]['admin_route']:
-            outlist.append({
-                'drug_id': dlist[idx]['drug_identification_number'],
-                'brand_name': dlist[idx]['brand_name'],
-                'ingredients': ','.join(dlist[idx]['ingredients'])
-                    .replace("'",r"''"),
-                'form': ','.join(dlist[idx]['dosage_form'])
-                    .replace("'",r"''"),
-                'route': ','.join(dlist[idx]['admin_route'])
-                    .replace("'",r"''"),
-                'manufacturer': ','.join(dlist[idx]['company_name'])
-                    .replace("'",r"''"),
-                'descriptor': ','.join(dlist[idx]['descriptor'])
-                    .replace("'",r"''")
-                })
-        # sort by the name (warning: this takes time)
-        outlist.sort(key=lambda drug:drug['brand_name'])
+        fbdict[drug_data[idx]['drug_identification_number']] = drug_data[idx]
 
     con.commit()
     con.close()
 
+    '''
     # create archive from the sql3 file
-    shutil.make_archive(zipname, 'zip', '.', dbname)
+    shutil.make_archive(outfilename, 'zip', '.', dbname)
+    '''
 
+    # create json file for firebase storage
     with open(fbname, 'w') as f:
         json.dump(fbdict, f)
 
-    with open(outname, 'w') as f:
-        json.dump(outlist, f)
 
 
 def pprint(data_list, start, end, filter=None):
@@ -502,80 +477,160 @@ def pprint(data_list, start, end, filter=None):
         idx = idx + 1
 
 
-def show_menu(version, status):
+def show_menu():
     os.system('clear')
-    return input('''
-Target version: {}
 
-Load input data by status:
+    return input('''
+* DPD Data Set: {}
+* Build Data: {}
+* Selected Drug Product Status: {}
+* Selected Drug Schedule Type: {}
+
+Select Drug Product Status:
   (1) Marketed drugs
-  (2) Marketed drugs + Approved drugs
+  (2) Approved drugs
   (3) Inactive drugs
   (4) Dormant drugs
   (5) All drugs
 
-Create output data by type:
+Select Drug Schedule Type:
   (a) OTC drugs + Prescription drugs
   (b) OTC drugs only
   (c) Prescription drugs only
   (d) All drug types
 
-Select (q) to quite
+Select:
+  (r) Generate Output File
+  (x) Clear Worksheet
+  (q) Quit
 
-:'''.format(version, status))
+> '''.format(dpd_dataset, build_dataset, drug_prod_status, drug_schedule))
+
+
+def check_dpd_files():
+
+    dpd_dataset.clear()
+
+    for k,v in suffixes.items():
+        if v == '':
+            dir_name = extract_dir
+        else:
+            dir_name = extract_dir + '_' + v
+
+        if os.path.isdir(dir_name):
+            flag = True
+            print('checking ' + dir_name)
+
+            for f in source_files:
+                if v == '':
+                    file_name = f
+                else:
+                    file_name = f.split('.')[0] + '_' + v + '.' + f.split('.')[1]
+
+                if not os.path.isfile(dir_name + '/' + file_name):
+                    print('>>>ERROR: {} not found in the {}'.format(
+                        file_name, dir_name))
+                    flag = False
+                    break
+            if flag:
+                print('  ..{} looks o.k.'.format(dir_name))
+                dpd_dataset.append(k)
+
+    #print(dpd_dataset)
+    return
+
+def check_build_files():
+
+    build_dataset.clear()
+
+    for f in os.listdir():
+        if (f.startswith(build_prefix) and
+                f.endswith('.json') and
+                len(f.split('_')) > 1 and
+                f.split('_')[1].split('.')[0] in suffixes):
+            build_dataset.append(f.split('_')[1].split('.')[0])
+
+    print(build_dataset)
 
 #-------------------------------------------------------------------------------
 if __name__ =='__main__':
-    version = datetime.today().strftime('%Y%m%d')
-    status = 'Marketed'
 
     while(True):
-        select = show_menu(version, status)
+        check_dpd_files()
+        check_build_files()
+
+        select = show_menu()
 
         if select == 'q':
             print('Bye')
             exit(0)
 
-        if select in ('1','2','3','4','5'):
-            print('reading raw data...')
+        elif select in ('1','2','3','4','5'):
             if select == '1':
-                prod_status = ['MARKETED']
+                if 'MARKETED' in  dpd_dataset:
+                    drug_prod_status = ['MARKETED']
+                else:
+                    input('  ERROR: DPD Dataset is not found')
+
             elif select == '2':
-                prod_status = ['MARKETED','APPROVED']
+                if 'APPROVED' in  dpd_dataset:
+                    drug_prod_status = ['APPROVED']
+                else:
+                    input('  ERROR: DPD Dataset is not found')
+
             elif select == '3':
-                prod_status = ['INACTIVE']
+                if 'INACTIVE' in  dpd_dataset:
+                    drug_prod_status = ['INACTIVE']
+                else:
+                    input('  ERROR: DPD Dataset is not found')
+
             elif select == '4':
-                prod_status = ['DORMANT']
+                if 'DORMANT' in  dpd_dataset:
+                    drug_prod_status = ['DORMANT']
+                else:
+                    input('  ERROR: DPD Dataset is not found')
+
             elif select == '5':
-                prod_status = ['MARKETED','APPROVED', 'INACTIVE', 'DORMANT']
-
-            read_extracts(prod_status)
-            print('\nbuilding drug data...')
-            build_data()
-            print('saving drug data to json file...')
-            save_json(version)
-            input('...drug data saved: {}.json'.format(json_prefix + version))
-
+                if ('MARKETED' in  dpd_dataset and 'APPROVED' in  dpd_dataset and
+                        'INACTIVE' in  dpd_dataset and 'DORMANT' in  dpd_dataset):
+                    drug_prod_status = ['MARKETED','APPROVED', 'INACTIVE',
+                            'DORMANT']
+                else:
+                    input('  >>ERROR DPD Dataset is not found')
 
         elif select in ('a','b','c','d'):
-            print('loading drug data from json file...')
-            drugs = load_json(version)
+            if select == 'a':
+                drug_schedule = "OTC+PRS"
+            elif select == 'b':
+                drug_schedule = "OTC"
+            elif select == 'c':
+                drug_schedule = "PRS"
+            elif select == 'd':
+                drug_schedule = "ALL"
 
-            if drugs is not None:
-                print('creating sqlite3 database...')
+        elif select == 'r':
 
-                if select == 'a':
-                    create_database(drugs, version, 'OTC+PRS')
-                elif select == 'b':
-                    create_database(drugs, version, 'OTC')
-                elif select == 'c':
-                    create_database(drugs, version, 'PRS')
-                elif select == 'd':
-                    create_database(drugs, version, 'ALL')
-                input('\n...database created')
-            else:
-                input('Failed to load json file: Select input data first...')
+            for prod_status in drug_prod_status:
+                build_flag = True
 
-        else:
-                input('Wrong selection...')
+                if prod_status in build_dataset:
+                    res = input('  Build data for {} exists... '
+                        'Do you want to use it? (y/N) '.format(prod_status))
+                    if(res.upper() == 'Y'):
+                        build_flag = False
 
+                if build_flag == False:
+                    drug_data = load_build_data(prod_status)
+                    if drug_data == None:
+                        print('  Failed to load build data... Rebuilding... ')
+                        build_flag = True
+
+                if build_flag == True:
+                    load_dpd_extracts(prod_status)
+                    build_worksheet(prod_status)
+                    drug_data = load_build_data(prod_status)
+
+                create_sqlite_database(drug_data, prod_status, drug_schedule)
+
+        elif select == 'x':
+            os.system('rm *.json *.zip *.sql3')

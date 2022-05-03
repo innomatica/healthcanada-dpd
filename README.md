@@ -5,15 +5,23 @@ files.
 
 ## How To Use
 
-1. Download four extracts files (allfile.zip, allfiles_ap.zip, all_files_dr.zip,
-and all_files_it.zip) from [this link.](https://www.canada.ca/en/health-canada/services/drugs-health-products/drug-products/drug-product-database/extracts.html)
-2. Extract all four archive files into the directories:
+1. Download extracts files from [this link](https://www.canada.ca/en/health-canada/services/drugs-health-products/drug-products/drug-product-database/extracts.html)
+depending on the product status (allfile.zip, allfiles_ia.zip, all_files_ap.zip, all_files_dr.zip)
+Due to the changes regarding therapheutic class, you need to download either
+version 1 or version 2 of the therapheutic class data file separately
+(ther.zip, ther_ia.zip, ther_ap.zip, ther_dr.zip).
+
+
+2. Extract the archive files into the sub-directories:
 ```
 \allfiles
 \allfiles_ap
 \allfiles_dr
 \allfiles_it
 ```
+Be sure to copy therapheputic class file into each directory.
+Otherewise the script will fail.
+
 3. Run the script
 ```
 python3 convert_data.py
@@ -25,11 +33,9 @@ database files in the subsequent operations.
 
 ## Output Files
 
-* build_yyyymmdd.json: JSON data that combines all extract files.
-* otc_yyyymmdd.sql3: sqlite3 database for Human OTC drugs.
-* otc_yyyymmdd.zip: zipped sqlite3 database
-* otc_yyyymmdd.json: filtered JSON data
-* otc_indexed_yyyymmdd.json: reconstructed JSON data with drug id as key
+* `build_<PRODUCT STATUS>.json`: JSON data that combines all extract files for the product status.
+* `<prduct schedule>_<PRODUCT STATUS>.sql3`: sqlite3 database output
+* `<prduct schedule>_<PRODUCT STATUS>.json`: json output with drug id as key
 
 ## Create Firebase Realtime Database
 
